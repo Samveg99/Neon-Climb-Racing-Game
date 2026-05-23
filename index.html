@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Climb Racing: Sci-Fi SUV Hill Climb</title>
+    <meta name="description" content="A premium 2D physics-based hill climb racing game with cyberpunk neon graphics, customizable SUV upgrade systems, rocket thrusters, and multiple gravity biomes.">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Visual Debug Console to catch and display any JS runtime errors on screen -->
+    <div id="debugConsole" style="position: absolute; top: 10px; left: 5%; width: 90%; max-height: 120px; overflow-y: auto; background: rgba(10, 2, 20, 0.95); color: #ff0055; border: 2px solid #ff0055; font-family: monospace; font-size: 11px; z-index: 99999; padding: 10px; border-radius: 6px; display: none; box-shadow: 0 0 20px rgba(255, 0, 85, 0.4); text-shadow: 0 0 3px #ff0055;"></div>
+    <script>
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            const d = document.getElementById('debugConsole');
+            if (d) {
+                d.style.display = 'block';
+                d.innerHTML += '<div>[ERR] ' + msg + ' @ ' + url.substring(url.lastIndexOf('/') + 1) + ':' + lineNo + ':' + columnNo + '</div>';
+            }
+            return false;
+        };
+    </script>
+
+    <!-- Main Game Container -->
+    <div id="gameContainer">
+        
+        <!-- Audio Mute Control -->
+        <div id="btnMute" class="audio-mute-btn" onclick="toggleAudioMute()">
+            <svg id="muteIcon" viewBox="0 0 24 24">
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+        </div>
+
+        <!-- HTML5 Canvas Rendering Target -->
+        <canvas id="gameCanvas" width="1024" height="576"></canvas>
+
+        <!-- 1. Start Menu & Upgrade Shop Overlay -->
+        <div id="menuScreen" class="screen-overlay">
+            <h1>Neon Climb Racing</h1>
+            
+            <div class="menu-layout">
+                
+                <!-- Left Column: Stage Selector -->
+                <div class="panel stage-select-panel">
+                    <h2>Stage Launchpad</h2>
+                    
+                    <div class="card-list">
+                        <!-- Stage 1: Cyberpunk -->
+                        <div class="stage-card" onclick="game.startRun('cyberpunk')">
+                            <h3>Earth-2099</h3>
+                            <p>Neon grid roads. Normal gravity (1.0g).</p>
+                            <div class="score" id="best_cyberpunk">Best: 0 m</div>
+                        </div>
+
+                        <!-- Stage 2: Lunar Wasteland (Unlockable) -->
+                        <div class="stage-card" style="min-height: 80px;">
+                            <div onclick="game.unlockedStages.lunar ? game.startRun('lunar') : null" style="height:100%; width:100%;">
+                                <h3>Lunar Wasteland</h3>
+                                <p>Bumpy craters. Low gravity (0.38g).</p>
+                                <div class="score" id="best_lunar">Best: 0 m</div>
+                            </div>
+                            
+                            <!-- Lock Overlay -->
+                            <div id="lock_lunar" class="lock-overlay">
+                                <button class="btn-pink" id="btnUnlock_lunar" onclick="event.stopPropagation(); game.unlockStage('lunar')">Unlock stage: 1500 EC</button>
+                            </div>
+                        </div>
+
+                        <!-- Stage 3: Plasma Nebula (Unlockable) -->
+                        <div class="stage-card" style="min-height: 80px;">
+                            <div onclick="game.unlockedStages.nebula ? game.startRun('nebula') : null" style="height:100%; width:100%;">
+                                <h3>Plasma Nebula</h3>
+                                <p>Undulating rifts. High gravity (1.5g).</p>
+                                <div class="score" id="best_nebula">Best: 0 m</div>
+                            </div>
+
+                            <!-- Lock Overlay -->
+                            <div id="lock_nebula" class="lock-overlay">
+                                <button class="btn-pink" id="btnUnlock_nebula" onclick="event.stopPropagation(); game.unlockStage('nebula')">Unlock stage: 3000 EC</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: SUV Upgrades & Customization -->
+                <div class="panel shop-panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h2>Cyber SUV Garage</h2>
+                        <div class="crystal-bank">
+                            <span style="font-size:12px; margin-right:4px;">ENERGY CELLS:</span>
+                            <span id="crystalCount">0</span>
+                        </div>
+                    </div>
+
+                    <div class="card-list">
+                        <!-- Upgrade: Engine -->
+                        <div class="upgrade-item">
+                            <div class="upgrade-info">
+                                <h3>Engine core</h3>
+                                <p>Traction power</p>
+                            </div>
+                            <div class="upgrade-visual" id="engineProgress">
+                                <!-- progress dots injected here -->
+                            </div>
+                            <button class="btn-pink" id="btnUpgrade_engine" onclick="game.buyUpgrade('engine')">200 EC</button>
+                        </div>
+
+                        <!-- Upgrade: Suspension -->
+                        <div class="upgrade-item">
+                            <div class="upgrade-info">
+                                <h3>Active dampers</h3>
+                                <p>Suspension bounce</p>
+                            </div>
+                            <div class="upgrade-visual" id="suspensionProgress"></div>
+                            <button class="btn-pink" id="btnUpgrade_suspension" onclick="game.buyUpgrade('suspension')">200 EC</button>
+                        </div>
+
+                        <!-- Upgrade: Tires -->
+                        <div class="upgrade-item">
+                            <div class="upgrade-info">
+                                <h3>Nano-grip tires</h3>
+                                <p>Slick slope grip</p>
+                            </div>
+                            <div class="upgrade-visual" id="tiresProgress"></div>
+                            <button class="btn-pink" id="btnUpgrade_tires" onclick="game.buyUpgrade('tires')">200 EC</button>
+                        </div>
+
+                        <!-- Upgrade: Thruster Booster -->
+                        <div class="upgrade-item">
+                            <div class="upgrade-info">
+                                <h3>Plasma jets</h3>
+                                <p>Mid-air rocket boost</p>
+                            </div>
+                            <div class="upgrade-visual" id="thrustersProgress"></div>
+                            <button class="btn-pink" id="btnUpgrade_thrusters" onclick="game.buyUpgrade('thrusters')">350 EC</button>
+                        </div>
+                    </div>
+
+                    <!-- Decal Paint selector -->
+                    <div class="paint-shop">
+                        <h3>Neon Decal Paint Color</h3>
+                        <div class="paint-options-container" id="paintSelector">
+                            <!-- color circles injected here -->
+                        </div>
+                    </div>
+
+                    <!-- Vehicle Hangar Selector -->
+                    <div class="paint-shop" style="margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
+                        <h3>Hangar (Vehicle Core Select)</h3>
+                        <div class="vehicle-selector-container" id="vehicleSelector">
+                            <!-- vehicle selector list dynamically injected here -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="control-info">
+                Controls: Gas [D / Right Arrow] | Brake/Reverse [A / Left Arrow] | Thruster Boost [Spacebar] | Restart [R]
+            </div>
+        </div>
+
+        <!-- 2. Game Over Overlay -->
+        <div id="gameOverScreen" class="screen-overlay hidden">
+            <div class="game-over-box">
+                <h2 id="gameOverTitle">System critically damaged</h2>
+                
+                <div class="game-over-stats">
+                    <div class="stat-item">
+                        <label>Distance reached</label>
+                        <span id="finalDistance">0 m</span>
+                    </div>
+                    <div class="stat-item">
+                        <label>High score</label>
+                        <span id="highScoreVal">0 m</span>
+                    </div>
+                </div>
+
+                <div class="game-over-actions">
+                    <button class="btn-pink" id="btnRestart">Restart</button>
+                    <button id="btnMenu">Garage</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Mobile On-screen Controllers -->
+        <div id="mobileControls" class="mobile-controls hidden">
+            <div class="control-group-left">
+                <button id="btnBrake" class="control-btn">BRAKE</button>
+                <button id="btnBoost" class="control-btn boost-btn">BOOST</button>
+            </div>
+            <button id="btnGas" class="control-btn">GAS</button>
+        </div>
+
+    </div>
+
+    <!-- Script loading registration -->
+    <script src="audio.js"></script>
+    <script src="physics.js"></script>
+    <script src="terrain.js"></script>
+    <script src="game.js"></script>
+    
+    <script>
+        // Mute toggle utility
+        function toggleAudioMute() {
+            if (window.audioEngine) {
+                const muted = window.audioEngine.toggleMute();
+                const icon = document.getElementById('muteIcon');
+                if (muted) {
+                    icon.innerHTML = '<path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.21.05-.42.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>';
+                } else {
+                    icon.innerHTML = '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>';
+                }
+            }
+        }
+
+        // Keep stage record distances sync'd on menu load
+        function syncBestScores() {
+            const scores = JSON.parse(localStorage.getItem('sf_highscores')) || {
+                cyberpunk: 0,
+                lunar: 0,
+                nebula: 0
+            };
+            document.getElementById('best_cyberpunk').innerText = `Best: ${scores.cyberpunk} m`;
+            document.getElementById('best_lunar').innerText = `Best: ${scores.lunar} m`;
+            document.getElementById('best_nebula').innerText = `Best: ${scores.nebula} m`;
+        }
+
+        window.addEventListener('load', () => {
+            syncBestScores();
+            // Wrap original triggerGameOver or showMenu to refresh scores
+            const originalShowMenu = game.showMenu;
+            game.showMenu = function() {
+                originalShowMenu.apply(this, arguments);
+                syncBestScores();
+            };
+            const originalTriggerGameOver = game.triggerGameOver;
+            game.triggerGameOver = function() {
+                originalTriggerGameOver.apply(this, arguments);
+                syncBestScores();
+            };
+        });
+    </script>
+</body>
+</html>
